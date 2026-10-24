@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkers vs Minimax AI</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#e9eef0;color:#14232b;display:flex;justify-content:center;padding:16px;margin:0}
+main{width:min(100%,520px)}h1{margin:4px 0}.sub{color:#587079;margin:0 0 12px}
+#status{font-weight:600;padding:10px 12px;background:#fff;border-radius:8px;margin-bottom:10px}
+#board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border:4px solid #2f5666;border-radius:6px;overflow:hidden;user-select:none}
+.sq{position:relative;display:flex;align-items:center;justify-content:center;background:#dbe5e8}.sq.d{background:#2f5666}
+.sq.last{box-shadow:inset 0 0 0 3px #f5d94e}.sq.dest{cursor:pointer}
+.sq.dest::after{content:"";width:30%;height:30%;border-radius:50%;background:#20b26b}
+.p{width:76%;height:76%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 3px 0 rgba(0,0,0,.35)}
+.p.h{background:radial-gradient(circle at 35% 30%,#f0a232,#b9741a);color:#3b2300}
+.p.a{background:radial-gradient(circle at 35% 30%,#1a1f24,#050708);color:#dbe5e8}
+.p.mv{cursor:pointer;outline:3px solid #20b26b;outline-offset:1px}.p.sel{outline:3px solid #fff}
+.p.cap{outline:3px dashed #e5484d;outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+select,button{font:inherit;padding:6px 10px;border-radius:6px;border:1px solid #587079;background:#fff}button{cursor:pointer;font-weight:600}
+#stats{margin-top:12px;background:#fff;border-radius:8px;padding:10px 12px;font-size:.9rem;line-height:1.5}
+</style></head><body><main>
+<h1>Checkers vs Minimax AI</h1><p class="sub">You are amber and move up. Captures are mandatory.</p>
+<div id="status"></div><div id="board"></div>
+<div class="row"><label>Depth <select id="depth"><option>2</option><option>4</option><option selected>6</option><option>8</option></select></label>
+<label><input type="checkbox" id="prune" checked> Alpha-beta pruning</label><button id="new">New game</button></div>
+<div id="stats">Make a move to see what the AI searched.</div></main>
+<script>
+const $=id=>document.getElementById(id);
+const post=(u,d)=>fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)}).then(r=>r.json());
+let B,legal,sel,busy,over,last;
+const msg=t=>$("status").textContent=t;
+async function init(){const d=await (await fetch("/api/new")).json();B=d.board;legal=d.legal;sel=null;busy=over=false;last=[];msg("Your move.");render()}
+async function click(i){
+ if(busy||over)return;
+ if(sel!==null){const m=legal.find(m=>m.from===sel&&m.path[m.path.length-1]===i);
+  if(m){busy=true;sel=null;last=[];const r=await post("/api/play",{board:B,move:m});B=r.board;
+   if(!r.ai_has_moves){over=true;msg("You win! The AI has no moves left.");render();return}
+   msg("AI is thinking…");render();
+   const a=await post("/api/ai",{board:B,depth:+$("depth").value,prune:$("prune").checked});
+   B=a.board;legal=a.legal;last=[a.move.from,...a.move.path];busy=false;
+   $("stats").innerHTML=`AI searched <b>${a.nodes.toLocaleString()}</b> positions in ${a.ms} ms (depth ${$("depth").value}, ${$("prune").checked?"alpha-beta":"plain minimax"}).<br>Best score: ${a.score} (positive favours AI).`;
+   if(!legal.length){over=true;msg("AI wins. You have no legal moves.")}else msg(a.move.caps.length?"AI captured. Your move.":"Your move.");
+   render();return}}
+ sel=legal.some(m=>m.from===i)&&sel!==i?i:null;render()}
+function render(){const el=$("board");el.innerHTML="";
+ const mine=sel===null?[]:legal.filter(m=>m.from===sel),dests=mine.map(m=>m.path.at(-1)),caps=mine.flatMap(m=>m.caps);
+ for(let i=0;i<64;i++){const r=i>>3,c=i&7,s=document.createElement("div"),v=B[i];
+  s.className="sq"+((r+c)%2?" d":"")+(dests.includes(i)?" dest":"")+(last.includes(i)?" last":"");
+  if(v){const p=document.createElement("div");
+   p.className="p "+(v>0?"h":"a")+(v>0&&!busy&&!over&&legal.some(m=>m.from===i)?" mv":"")+(sel===i?" sel":"")+(caps.includes(i)?" cap":"");
+   p.textContent=Math.abs(v)==2?"♛":"";s.appendChild(p)}
+  s.onclick=()=>click(i);el.appendChild(s)}}
+$("new").onclick=init;init();
+</script></body></html>
